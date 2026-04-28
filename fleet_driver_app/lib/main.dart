@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/common/select_role_screen.dart';
+import 'services/app_update_service.dart';
+import 'services/session_service.dart';
 
 void main() {
   runApp(const FleetApp());
@@ -43,7 +45,44 @@ class FleetApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const SelectRoleScreen(),
+      home: const AppEntryScreen(),
+    );
+  }
+}
+
+class AppEntryScreen extends StatefulWidget {
+  const AppEntryScreen({super.key});
+
+  @override
+  State<AppEntryScreen> createState() => _AppEntryScreenState();
+}
+
+class _AppEntryScreenState extends State<AppEntryScreen> {
+  late final Future<Widget> _homeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _homeFuture = SessionService.resolveHome();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Widget>(
+      future: _homeFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        return UpdateGate(
+          child: snapshot.data ?? const SelectRoleScreen(),
+        );
+      },
     );
   }
 }

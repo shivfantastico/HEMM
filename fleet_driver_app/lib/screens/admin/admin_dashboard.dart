@@ -1,14 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../common/select_role_screen.dart';
 import '../../services/api_service.dart';
-import '../admin/admin_vehicle_screen.dart';
-import '../admin/admin_trip_monitor_screen.dart';
-import '../admin/admin_live_fleet_map_screen.dart';
+import '../../services/session_service.dart';
+import '../admin/admin_reports_screen.dart';
 import '../admin/admin_refuel_logs_screen.dart';
 import '../admin/admin_service_scheduler_screen.dart';
-import '../admin/admin_reports_screen.dart';
+import '../admin/admin_trip_monitor_screen.dart';
+import '../admin/admin_vehicle_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -27,8 +26,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final List<_DrawerItem> menuItems = const [
     _DrawerItem(label: "Dashboard", icon: Icons.dashboard_outlined),
     _DrawerItem(label: "Vehicles", icon: Icons.local_shipping_outlined),
-    _DrawerItem(label: "Active Trips", icon: Icons.alt_route_outlined),
-    _DrawerItem(label: "Live Fleet Map", icon: Icons.map_outlined),
+    _DrawerItem(label: "Trip Monitor", icon: Icons.alt_route_outlined),
     _DrawerItem(label: "Refuel Logs", icon: Icons.local_gas_station_outlined),
     _DrawerItem(label: "Service Schedule", icon: Icons.build_circle_outlined),
     _DrawerItem(label: "Reports", icon: Icons.assessment_outlined),
@@ -84,7 +82,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (index == 3) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const AdminLiveFleetMapScreen()),
+        MaterialPageRoute(builder: (_) => const AdminRefuelLogsScreen()),
       );
       return;
     }
@@ -92,20 +90,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (index == 4) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const AdminRefuelLogsScreen()),
-      );
-      return;
-    }
-
-    if (index == 5) {
-      Navigator.push(
-        context,
         MaterialPageRoute(builder: (_) => const AdminServiceSchedulerScreen()),
       );
       return;
     }
 
-    if (index == 6) {
+    if (index == 5) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const AdminReportsScreen()),
@@ -190,8 +180,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ),
               onTap: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
+                await SessionService.clearSession();
                 if (!mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
@@ -346,7 +335,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               child: const Center(
                 child: Text(
-                  "Use the menu to manage vehicles, trips, maps, refuels and reports.",
+                  "Use the menu to manage vehicles, trips, refuels and reports.",
                   style: TextStyle(color: Color(0xFF677084)),
                   textAlign: TextAlign.center,
                 ),

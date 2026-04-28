@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
+import '../../services/session_service.dart';
 import 'dashboard_screen.dart';
 import 'register_driver_screen.dart';
 
@@ -47,12 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
-      final prefs = await SharedPreferences.getInstance();
-      if (data["token"] is String) {
-        await prefs.setString("token", data["token"]);
-      }
-      if (!mounted) return;
-
       final driver = data["driver"] is Map
           ? Map<String, dynamic>.from(data["driver"])
           : <String, dynamic>{};
@@ -62,6 +56,22 @@ class _LoginScreenState extends State<LoginScreen> {
       final driverId = rawDriverId is int
           ? rawDriverId
           : int.tryParse(rawDriverId?.toString() ?? "") ?? 0;
+      final token = data["token"]?.toString() ?? "";
+
+      if (token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Login succeeded but token is missing")),
+        );
+        return;
+      }
+
+      await SessionService.saveDriverSession(
+        token: token,
+        name: driverName,
+        userId: driverId,
+      );
+
+      if (!mounted) return;
 
       Navigator.pushAndRemoveUntil(
         context,

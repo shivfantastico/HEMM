@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:5000';
+  static const String baseUrl = 'http://45.114.143.183:5005';
   static const Duration _requestTimeout = Duration(seconds: 20);
 
   static Future<Map<String, String>> _buildHeaders({bool auth = false}) async {

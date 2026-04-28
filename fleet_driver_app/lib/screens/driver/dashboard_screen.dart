@@ -2,12 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../services/api_service.dart';
+import '../../services/session_service.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../services/api_service.dart';
-import 'trip_started_screen.dart';
+import '../common/select_role_screen.dart';
 import 'scan_qr_screen.dart';
+import 'trip_started_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String driverName;
@@ -29,6 +30,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool loading = false;
   bool validatingVehicle = false;
   bool showReadingsForm = false;
+  bool _recoveringActiveTrip = false;
   int? selectedVehicleId;
 
   List trips = [];
@@ -44,6 +46,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String get currentDate => DateFormat('dd-MM-yyyy').format(now);
   String get currentTime => DateFormat('HH:mm').format(now);
+
+  String _normalizeVehicleInput(String value) {
+    return value.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
 
   DateTime? _extractTripDate(Map<String, dynamic> trip) {
     final possibleKeys = [
@@ -158,6 +164,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return lines.join("\n");
   }
 
+  Future<void> _checkAndRecoverActiveTrip({bool showMessage = false}) async {
+    if (_recoveringActiveTrip || !mounted) return;
+
+    _recoveringActiveTrip = true;
+    try {
+      await _recoverActiveTrip(
+        showRecoveredMessage: showMessage,
+        replaceCurrent: true,
+      );
+    } finally {
+      _recoveringActiveTrip = false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -169,6 +189,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     });
     fetchTripHistory();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndRecoverActiveTrip();
+    });
   }
 
   @override
@@ -267,7 +290,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ================= VALIDATE VEHICLE + SHOW FORM =================
   Future<void> startTrip() async {
-    if (vehicleController.text.isEmpty) {
+    final normalizedVehicle = _normalizeVehicleInput(vehicleController.text);
+
+    if (normalizedVehicle.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Vehicle required")));
@@ -282,7 +307,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     final validateResponse = await ApiService.post("/api/vehicle/by-qr", {
-      "qr_value": vehicleController.text.trim(),
+      "qr_value": normalizedVehicle,
     }, auth: true);
 
     if (!mounted) return;
@@ -293,7 +318,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text("Invalid Vehicle")));
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            ApiService.messageFromResponse(
+              validateResponse,
+              fallbackMessage: "Unable to validate vehicle",
+            ),
+          ),
+        ),
+      );
       return;
     }
 
@@ -304,7 +338,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     readingsRequired = incomingReadings is List ? incomingReadings : [];
 
     // Fetch last trip's end readings for this vehicle
-    final lastTripResponse = await ApiService.get("/api/trip/last/${vehicleId}", auth: true);
+    lastEndReadings.clear();
+    final lastTripResponse = await ApiService.get(
+      "/api/trip/last/${vehicleId}",
+      auth: true,
+    );
     if (lastTripResponse.statusCode == 200) {
       final lastTripData = jsonDecode(lastTripResponse.body);
       if (lastTripData["readings"] is List) {
@@ -336,71 +374,141 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // ================= SUBMIT TRIP =================
-  Future<void> _postTripStartLocation({
+  Future<void> _openStartedTrip({
     required int tripId,
+    required String vehicleNumber,
+    bool showRecoveredMessage = false,
+    bool replaceCurrent = false,
   }) async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+    if (!mounted) return;
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+    if (showRecoveredMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Trip was already started. Reopening active trip."),
+        ),
       );
-
-      final payload = {
-        "trip_id": tripId,
-        "latitude": position.latitude,
-        "longitude": position.longitude,
-      };
-
-      final endpoints = <String>[
-        "/location",
-        "/api/location",
-        "/api/admin/location",
-      ];
-
-      for (final endpoint in endpoints) {
-        final response = await ApiService.post(
-          endpoint,
-          payload,
-          auth: true,
-        );
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          debugPrint("Location updated via $endpoint");
-          return;
-        }
-        debugPrint(
-          "Location update failed on $endpoint: ${response.statusCode} ${response.body}",
-        );
-      }
-
-      // Retry once after short delay in case trip status just transitioned to STARTED.
-      await Future.delayed(const Duration(milliseconds: 800));
-      for (final endpoint in endpoints) {
-        final response = await ApiService.post(
-          endpoint,
-          payload,
-          auth: true,
-        );
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          debugPrint("Location updated on retry via $endpoint");
-          return;
-        }
-      }
-    } catch (_) {
-      // Location sync should not block trip start flow.
     }
+
+    final route = MaterialPageRoute(
+      builder: (_) => TripStartedScreen(
+        tripId: tripId,
+        vehicleNumber: vehicleNumber,
+        date: currentDate,
+        time: currentTime,
+      ),
+    );
+
+    if (replaceCurrent) {
+      Navigator.pushReplacement(
+        context,
+        route,
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      route,
+    );
+  }
+
+  Future<bool> _recoverActiveTrip({
+    bool showRecoveredMessage = false,
+    bool replaceCurrent = false,
+  }) async {
+    final activeTripResponse = await ApiService.get(
+      "/api/trip/active/current",
+      auth: true,
+    );
+
+    if (!mounted || activeTripResponse.statusCode != 200) {
+      return false;
+    }
+
+    Map<String, dynamic> data;
+    try {
+      data = Map<String, dynamic>.from(jsonDecode(activeTripResponse.body));
+    } catch (_) {
+      return false;
+    }
+
+    final trip = data["trip"] is Map
+        ? Map<String, dynamic>.from(data["trip"])
+        : <String, dynamic>{};
+    final rawTripId = trip["id"] ?? trip["trip_id"];
+    final tripId = rawTripId is int
+        ? rawTripId
+        : int.tryParse(rawTripId?.toString() ?? "");
+
+    if (tripId == null) {
+      return false;
+    }
+
+    final vehicleNumber =
+        (trip["vehicle_number"] ?? vehicleController.text.trim()).toString();
+
+    await _openStartedTrip(
+      tripId: tripId,
+      vehicleNumber: vehicleNumber,
+      showRecoveredMessage: showRecoveredMessage,
+      replaceCurrent: replaceCurrent,
+    );
+    return true;
+  }
+
+  Future<void> _logout() async {
+    await SessionService.clearSession();
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const SelectRoleScreen()),
+      (route) => false,
+    );
+  }
+
+  Widget _buildDriverHeader() {
+    return Container(
+      height: 90,
+      width: double.infinity,
+      color: const Color(0xFFCE1E2D),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              const SizedBox(width: 40),
+              Expanded(
+                child: Center(
+                  child: Image.asset("assets/lloyds_logo.png", height: 45),
+                ),
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onSelected: (value) {
+                  if (value == "logout") {
+                    _logout();
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem<String>(
+                    value: "logout",
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, color: Color(0xFFCE1E2D)),
+                        SizedBox(width: 10),
+                        Text("Logout"),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> submitDynamicTrip(int vehicleId) async {
@@ -484,22 +592,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       final resolvedTripId = tripId;
-      await _postTripStartLocation(
-        tripId: resolvedTripId,
-      );
+      final responseTrip = data["trip"] is Map
+          ? Map<String, dynamic>.from(data["trip"])
+          : <String, dynamic>{};
+      final resolvedVehicleNumber =
+          (responseTrip["vehicle_number"] ?? vehicleController.text.trim())
+              .toString();
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TripStartedScreen(
-            tripId: resolvedTripId,
-            vehicleNumber: vehicleController.text.trim(),
-            date: currentDate,
-            time: currentTime,
-          ),
-        ),
+      await _openStartedTrip(
+        tripId: resolvedTripId,
+        vehicleNumber: resolvedVehicleNumber,
+        showRecoveredMessage: data["already_started"] == true,
       );
     } else {
+      final recovered = await _recoverActiveTrip(
+        showRecoveredMessage: true,
+        replaceCurrent: true,
+      );
+      if (recovered || !mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -684,16 +797,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: const Color(0xFFF4F4F6),
       body: Column(
         children: [
-          Container(
-            height: 90,
-            width: double.infinity,
-            color: const Color(0xFFCE1E2D),
-            child: SafeArea(
-              child: Center(
-                child: Image.asset("assets/lloyds_logo.png", height: 45),
-              ),
-            ),
-          ),
+          _buildDriverHeader(),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),

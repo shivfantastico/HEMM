@@ -109,6 +109,61 @@ class _AdminVehicleScreenState extends State<AdminVehicleScreen> {
     return "Request failed";
   }
 
+  String _escapeRegExp(String value) {
+    return RegExp.escape(value.trim());
+  }
+
+  Iterable<String> _allVehicleNumbers() sync* {
+    for (final vehicle in uniqueVehicles) {
+      final number = vehicle["vehicle_number"]?.toString().trim();
+      if (number != null && number.isNotEmpty) {
+        yield number;
+      }
+    }
+  }
+
+  String _buildNextVehicleNumber(int? vehicleTypeId) {
+    if (vehicleTypeId == null) return "";
+
+    final selectedType = vehicleTypes.cast<Map<String, dynamic>?>().firstWhere(
+      (type) => type?["id"] == vehicleTypeId,
+      orElse: () => null,
+    );
+
+    final baseName = (selectedType?["name"] ?? "").toString().trim();
+    if (baseName.isEmpty) return "";
+
+    final matcher = RegExp(
+      "^${_escapeRegExp(baseName)}(?:-(\\d+))?\$",
+      caseSensitive: false,
+    );
+
+    var baseExists = false;
+    var maxSuffix = 1;
+
+    for (final vehicleNumber in _allVehicleNumbers()) {
+      final match = matcher.firstMatch(vehicleNumber);
+      if (match == null) continue;
+
+      final suffix = match.group(1);
+      if (suffix == null) {
+        baseExists = true;
+        continue;
+      }
+
+      final parsed = int.tryParse(suffix);
+      if (parsed != null && parsed > maxSuffix) {
+        maxSuffix = parsed;
+      }
+    }
+
+    if (!baseExists) {
+      return baseName;
+    }
+
+    return "$baseName-${maxSuffix + 1}";
+  }
+
   Future<void> _createVehicle({
     required String vehicleNumber,
     required int vehicleTypeId,
@@ -178,6 +233,7 @@ class _AdminVehicleScreenState extends State<AdminVehicleScreen> {
 
     final vehicleNumberController = TextEditingController();
     int? selectedTypeId = vehicleTypes.first["id"] as int?;
+    vehicleNumberController.text = _buildNextVehicleNumber(selectedTypeId);
 
     await showDialog(
       context: context,
@@ -194,6 +250,7 @@ class _AdminVehicleScreenState extends State<AdminVehicleScreen> {
                       controller: vehicleNumberController,
                       decoration: const InputDecoration(
                         labelText: "Vehicle Number",
+                        helperText: "Auto-generated from vehicle type",
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -215,6 +272,8 @@ class _AdminVehicleScreenState extends State<AdminVehicleScreen> {
                       onChanged: (value) {
                         setLocalState(() {
                           selectedTypeId = value;
+                          vehicleNumberController.text =
+                              _buildNextVehicleNumber(value);
                         });
                       },
                     ),

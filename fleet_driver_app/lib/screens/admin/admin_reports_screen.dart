@@ -28,6 +28,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
   Map<String, dynamic> summary = {};
   List<Map<String, dynamic>> topRefuelVehicles = [];
   List<Map<String, dynamic>> recentTrips = [];
+  List<Map<String, dynamic>> completedTrips = [];
 
   @override
   void initState() {
@@ -94,6 +95,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
         summary = {};
         topRefuelVehicles = [];
         recentTrips = [];
+        completedTrips = [];
       });
       return;
     }
@@ -107,6 +109,10 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
       recentTrips = ((data["recentTrips"] ?? []) as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      completedTrips = ((data["completedTrips"] ?? []) as List)
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
@@ -195,6 +201,29 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
     return 0;
   }
 
+  List<Map<String, dynamic>> _tripReadings(Map<String, dynamic> trip) {
+    final raw = trip["readings"];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  String _formatValue(dynamic value) {
+    if (value == null) return "-";
+    final number = value is num ? value.toDouble() : double.tryParse(value.toString());
+    if (number == null) return value.toString();
+    if (number == number.roundToDouble()) {
+      return number.toInt().toString();
+    }
+    return number.toStringAsFixed(2);
+  }
+
+  String _completedAtText(Map<String, dynamic> trip) {
+    return (trip["completed_at"] ?? trip["created_at"] ?? "-").toString();
+  }
+
   void _resetFilters() {
     setState(() {
       vehicleController.clear();
@@ -224,6 +253,8 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                   _buildTopRefuelVehicles(),
                   const SizedBox(height: 12),
                   _buildRecentTrips(),
+                  const SizedBox(height: 12),
+                  _buildCompletedTrips(),
                 ],
               ),
             ),
@@ -522,6 +553,87 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                 child: Text(
                   "Trip #$tripId | $vehicle | $driver | $status | $createdAt",
                   style: const TextStyle(color: AdminBranding.secondaryText),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompletedTrips() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AdminBranding.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Completed Trip Details",
+            style: TextStyle(color: AdminBranding.primaryText, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (completedTrips.isEmpty)
+            const Text(
+              "No completed trips found",
+              style: TextStyle(color: AdminBranding.secondaryText),
+            )
+          else
+            ...completedTrips.map((trip) {
+              final readings = _tripReadings(trip);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8FA),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Trip #${trip["trip_id"] ?? "-"} | ${(trip["vehicle_number"] ?? "-").toString()}",
+                      style: const TextStyle(
+                        color: AdminBranding.primaryText,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Driver: ${(trip["driver_name"] ?? "-").toString()} | Status: ${(trip["trip_status"] ?? "-").toString()}",
+                      style: const TextStyle(color: AdminBranding.secondaryText),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Completed: ${_completedAtText(trip)}",
+                      style: const TextStyle(color: AdminBranding.secondaryText),
+                    ),
+                    const SizedBox(height: 8),
+                    if (readings.isEmpty)
+                      const Text(
+                        "No reading details available",
+                        style: TextStyle(color: AdminBranding.secondaryText),
+                      )
+                    else
+                      ...readings.map((reading) {
+                        final unit = (reading["unit"] ?? "").toString();
+                        final title = unit.isEmpty
+                            ? (reading["name"] ?? "Reading").toString()
+                            : "${reading["name"]} ($unit)";
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            "$title | Start: ${_formatValue(reading["start_value"])} | End: ${_formatValue(reading["end_value"])} | Difference: ${_formatValue(reading["difference_value"])}",
+                            style: const TextStyle(color: AdminBranding.secondaryText),
+                          ),
+                        );
+                      }),
+                  ],
                 ),
               );
             }),

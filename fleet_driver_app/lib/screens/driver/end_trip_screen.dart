@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
-import 'login_screen.dart';
+import '../../services/session_service.dart';
 
 class EndTripScreen extends StatefulWidget {
   final int tripId;
@@ -85,6 +85,17 @@ class _EndTripScreenState extends State<EndTripScreen> {
               double.tryParse(reading["start_value"].toString()) ?? 0.0;
         }
       }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ApiService.messageFromResponse(
+              response,
+              fallbackMessage: "Unable to load required readings",
+            ),
+          ),
+        ),
+      );
     }
 
     setState(() => fetching = false);
@@ -193,9 +204,12 @@ class _EndTripScreenState extends State<EndTripScreen> {
         const SnackBar(content: Text("Trip Completed Successfully")),
       );
 
+      final home = await SessionService.resolveHome();
+      if (!mounted) return;
+
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute(builder: (_) => home),
         (route) => false,
       );
     } else {

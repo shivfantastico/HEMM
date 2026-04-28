@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
+import '../../services/session_service.dart';
 import 'dashboard_screen.dart';
 
 class OtpScreen extends StatefulWidget {
@@ -39,12 +39,27 @@ class _OtpScreenState extends State<OtpScreen> {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
+      final token = data["token"]?.toString() ?? "";
+      final driver = data["driver"] is Map
+          ? Map<String, dynamic>.from(data["driver"])
+          : <String, dynamic>{};
+      final driverName = (driver["name"] ?? "Driver").toString();
+      final driverId = driver["id"] is int
+          ? driver["id"] as int
+          : int.tryParse(driver["id"]?.toString() ?? "") ?? 0;
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("token", data["token"]);
+      if (token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("OTP verified but token is missing")),
+        );
+        return;
+      }
 
-      final driverName = data["driver"]["name"];
-      final driverId = data["driver"]["id"];
+      await SessionService.saveDriverSession(
+        token: token,
+        name: driverName,
+        userId: driverId,
+      );
 
       Navigator.pushAndRemoveUntil(
         context,

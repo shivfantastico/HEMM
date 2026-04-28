@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
+import '../../services/session_service.dart';
 import 'admin_dashboard.dart';
 
 class AdminLoginScreen extends StatefulWidget {
@@ -70,13 +70,11 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           return;
         }
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString("token", token);
-        await prefs.setString("role", user["role"]?.toString() ?? "ADMIN");
-        await prefs.setString("name", user["name"]?.toString() ?? "Admin");
-        if (user["id"] is int) {
-          await prefs.setInt("user_id", user["id"]);
-        }
+        await SessionService.saveAdminSession(
+          token: token,
+          name: user["name"]?.toString() ?? "Admin",
+          userId: user["id"] is int ? user["id"] as int : 0,
+        );
 
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(

@@ -12,13 +12,25 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   final vehicleController = TextEditingController();
   bool loading = false;
 
+  String _normalizeVehicleInput(String value) {
+    return value.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
   validateVehicle() async {
+    final normalizedVehicle = _normalizeVehicleInput(vehicleController.text);
+    if (normalizedVehicle.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter vehicle number")),
+      );
+      return;
+    }
+
     setState(() => loading = true);
 
     final response = await ApiService.post(
       "/api/vehicle/by-qr",
       {
-        "qr_value": vehicleController.text.trim()
+        "qr_value": normalizedVehicle
       },
       auth: true,
     );

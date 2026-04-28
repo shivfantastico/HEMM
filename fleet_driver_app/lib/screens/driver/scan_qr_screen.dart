@@ -15,8 +15,13 @@ class _ScanQrScreenState extends State<ScanQrScreen> {
     if (scanned) return;
     scanned = true;
 
-    final response = await ApiService.post("/vehicle/by-qr", {
-      "qr_code": qrData,
+    final normalizedQr = qrData
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    final response = await ApiService.post("/api/vehicle/by-qr", {
+      "qr_value": normalizedQr,
     }, auth: true);
 
     if (response.statusCode == 200) {
@@ -28,7 +33,7 @@ class _ScanQrScreenState extends State<ScanQrScreen> {
         ),
       );
 
-      Navigator.pop(context);
+      Navigator.pop(context, data["vehicle"]["vehicle_number"]);
     } else {
       ScaffoldMessenger.of(
         context,
